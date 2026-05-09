@@ -1,1 +1,2 @@
-#include "processing.h"\nImage applyGaussianBlur(const Image& input) { return input; }
+#include "processing.h"
+Image applyGaussianBlur(const Image& input) { return input; }

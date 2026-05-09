@@ -7,7 +7,7 @@ TARGET = canny_scalar
 all: $(TARGET)
 
 $(TARGET): $(SRCS)
-$(CXX) $(CXXFLAGS) $(SRCS) -o $(TARGET)
+	$(CXX) $(CXXFLAGS) $(SRCS) -o $(TARGET)
 
 clean:
-rm -f $(TARGET)
+	rm -f 	$(TARGET)
