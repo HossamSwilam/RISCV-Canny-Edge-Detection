@@ -5,7 +5,7 @@
 #include "image.h"
 #include "processing.h"
 
-// دالة قراءة صور PGM (بصيغة P5 Binary)
+// Function to read PGM images (P5 Binary format)
 Image readPGM(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
     if (!file) {
@@ -16,7 +16,7 @@ Image readPGM(const std::string& filename) {
     std::string magic;
     int width, height, maxVal;
     file >> magic >> width >> height >> maxVal;
-    file.ignore(); // تخطي السطر الجديد بعد Header
+    file.ignore(); // Skip the newline character after the header
 
     if (magic != "P5") {
         std::cerr << "Error: Only P5 PGM files are supported!" << std::endl;
@@ -32,7 +32,7 @@ Image readPGM(const std::string& filename) {
     return img;
 }
 
-// دالة حفظ الصور بصيغة PGM
+// Function to save images in PGM format
 bool writePGM(const std::string& filename, const Image& img) {
     std::ofstream file(filename, std::ios::binary);
     if (!file) return false;
@@ -46,7 +46,7 @@ bool writePGM(const std::string& filename, const Image& img) {
 int main() {
     std::cout << "--- Canny Edge Detection (Scalar Version) ---" << std::endl;
 
-    // 1. قراءة الصورة (لازم يكون عندك ملف اسمه input.pgm عشان يشتغل)
+    // 1. Read the image (Ensure 'input.pgm' exists in the project folder)
     std::string inputPath = "input.pgm";
     Image input = readPGM(inputPath);
     
@@ -57,20 +57,29 @@ int main() {
 
     std::cout << "Image loaded: " << input.width << "x" << input.height << std::endl;
 
-    // 2. المرحلة الأولى: Gaussian Blur (شغل المبرمج 1)
+    // 2. Stage 1: Gaussian Blur 
     std::cout << "Applying Gaussian Blur..." << std::endl;
     Image blurred = applyGaussianBlur(input);
     
-    // 3. المرحلة الثانية: Sobel Operator (شغل المبرمج 2)
+    // 3. Stage 2: Sobel Operator 
     std::cout << "Applying Sobel Operator..." << std::endl;
     Image magnitude, direction;
     applySobel(blurred, magnitude, direction);
     
-    // 4. المرحلة الثالثة والرابعة: Post-Processing (شغل المبرمج 3 و 4)
-    std::cout << "Applying Canny Post-Processing..." << std::endl;
-    Image finalResult = applyCannyPostProcessing(magnitude, direction);
+    // 4. Stage 3: Non-Maximum Suppression 
+    std::cout << "Applying Non-Maximum Suppression..." << std::endl;
+    Image nmsResult = applyCannyPostProcessing(magnitude, direction);
 
-    // 5. حفظ النتيجة النهائية
+    // 5. Stage 4: Double Thresholding (Your Task)
+    std::cout << "Applying Double Thresholding..." << std::endl;
+    // Using experimental values for thresholds (Low: 20, High: 60)
+    Image threshResult = applyDoubleThresholding(nmsResult, 20, 60);
+
+    // 6. Stage 5: Hysteresis Edge Tracking (Your Task)
+    std::cout << "Applying Hysteresis Edge Tracking..." << std::endl;
+    Image finalResult = applyHysteresis(threshResult);
+
+    // 7. Save the final result
     if (writePGM("output.pgm", finalResult)) {
         std::cout << "Success! Output saved as output.pgm" << std::endl;
     } else {
