@@ -1,7 +1,11 @@
 #include <gtest/gtest.h>
 #include "processing.h"
 
-// اختبار وهمي لجزء الـ NMS والـ Thresholding
-TEST(CannyPostProcessingTest, DummyCheck) {
-    SUCCEED();
+TEST(CannyPostProcessingTest, HandlesEmptyImageSafely) {
+    Image mag, dir;
+    mag.width = 0; mag.height = 0; dir.width = 0; dir.height = 0;
+
+    Image output = applyCannyPostProcessing(mag, dir);
+    
+    EXPECT_TRUE(output.data.empty());
 }
