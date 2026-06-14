@@ -45,10 +45,11 @@ tests/%.o: tests/%.cpp
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
 
-$(TEST_TARGET): $(OBJS) $(TEST_OBJS)
-	$(CXX) $(CXXFLAGS) $(OBJS) $(TEST_OBJS) -o $(TEST_TARGET) $(LIBS)
+$(TEST_TARGET): $(filter-out src/main.o, $(OBJS)) $(TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(filter-out src/main.o, $(OBJS)) $(TEST_OBJS) -o $(TEST_TARGET) $(LIBS)
 
 clean:
 	rm -f src/*.o tests/*.o $(TARGET) $(TEST_TARGET)
 
 .PHONY: all clean test
+
