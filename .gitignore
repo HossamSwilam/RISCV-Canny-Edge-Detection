@@ -1,1 +1,5 @@
-build/
+*.o
+*.a
+run_tests
+canny_edge_detection
+*.savebuild/
