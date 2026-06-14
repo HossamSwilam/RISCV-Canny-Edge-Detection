@@ -271,9 +271,7 @@ TEST(SobelTest, OutputBoundsAlwaysValid) {
             << "Invalid direction " << (int)d << " at index " << i;
 
     }
-
-#include "processing.h"
-
+}
 TEST(SobelTest, OutputsHaveCorrectDimensions) {
     Image input;
     input.width = 3; input.height = 3;
