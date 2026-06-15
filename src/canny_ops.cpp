@@ -1,112 +1,96 @@
 #include "processing.h"
+#include <cstring>
 
 Image applyCannyPostProcessing(const Image& mag, const Image& dir) {
-
     Image output;
-
-    output.width = mag.width;
-    output.height = mag.height;
-
-    output.data.assign(mag.width * mag.height, 0);
+    output.allocate(mag.width, mag.height);
 
     int w = mag.width;
     int h = mag.height;
 
     for (int y = 1; y < h - 1; ++y) {
-
         for (int x = 1; x < w - 1; ++x) {
-
             int idx = y * w + x;
 
             unsigned char current = mag.data[idx];
-
             unsigned char neighbor1 = 0;
             unsigned char neighbor2 = 0;
-
             unsigned char angle = dir.data[idx];
 
             switch(angle) {
-
                 case 0:
                     neighbor1 = mag.data[idx - 1];
                     neighbor2 = mag.data[idx + 1];
                     break;
-
                 case 45:
                     neighbor1 = mag.data[(y - 1) * w + (x + 1)];
                     neighbor2 = mag.data[(y + 1) * w + (x - 1)];
                     break;
-
                 case 90:
                     neighbor1 = mag.data[(y - 1) * w + x];
                     neighbor2 = mag.data[(y + 1) * w + x];
                     break;
-
                 case 135:
                     neighbor1 = mag.data[(y - 1) * w + (x - 1)];
                     neighbor2 = mag.data[(y + 1) * w + (x + 1)];
                     break;
             }
 
-            if (current >= neighbor1 &&
-                current >= neighbor2)
-            {
+            if (current >= neighbor1 && current >= neighbor2) {
                 output.data[idx] = current;
-            }
-            else {
+            } else {
                 output.data[idx] = 0;
             }
         }
     }
-
     return output;
 }
 
-// 1. Double Thresholding Stage
 Image applyDoubleThresholding(const Image& nms_img, unsigned char low_thresh, unsigned char high_thresh) {
     Image output;
-    output.width = nms_img.width;
-    output.height = nms_img.height;
-    output.data.assign(nms_img.width * nms_img.height, 0);
+    output.allocate(nms_img.width, nms_img.height);
 
-    // Iterate through each pixel to classify it based on thresholds
-    for (size_t i = 0; i < nms_img.data.size(); ++i) {
+    int total_pixels = nms_img.width * nms_img.height;
+
+    for (int i = 0; i < total_pixels; ++i) {
         if (nms_img.data[i] >= high_thresh) {
-            output.data[i] = 255; // Strong pixel (definite edge)
+            output.data[i] = 255; 
         } else if (nms_img.data[i] >= low_thresh) {
-            output.data[i] = 128; // Weak pixel (potential edge)
+            output.data[i] = 128; 
         } else {
-            output.data[i] = 0;   // Non-edge pixel (suppress)
+            output.data[i] = 0;   
         }
     }
     return output;
 }
 
-// 2. Hysteresis Edge Tracing Stage
 Image applyHysteresis(const Image& thresh_img) {
-    Image output = thresh_img; 
-    int w = output.width;
-    int h = output.height;
+    Image output;
+    output.allocate(thresh_img.width, thresh_img.height);
+    
+    int w = thresh_img.width;
+    int h = thresh_img.height;
+    int total_pixels = w * h;
 
-    // Iterate through the image to find weak pixels connected to strong ones
+    // نسخ البيانات بشكل عميق وصحيح للـ Pointer الجديد
+    std::memcpy(output.data, thresh_img.data, total_pixels);
+
     for (int y = 1; y < h - 1; ++y) {
         for (int x = 1; x < w - 1; ++x) {
             int idx = y * w + x;
             
-            // If the pixel is weak, check its 8 neighbors
             if (output.data[idx] == 128) {
                 if (output.data[(y-1)*w + x-1] == 255 || output.data[(y-1)*w + x] == 255 || output.data[(y-1)*w + x+1] == 255 ||
                     output.data[y*w + x-1] == 255     ||                                    output.data[y*w + x+1] == 255 ||
                     output.data[(y+1)*w + x-1] == 255 || output.data[(y+1)*w + x] == 255 || output.data[(y+1)*w + x+1] == 255) {
                     
-                    output.data[idx] = 255; // Promote to strong pixel
+                    output.data[idx] = 255; 
                 }
             }
         }
     }
 
-    // Final cleanup: suppress any remaining weak pixels that are not connected to strong ones
-    for (size_t i = 0; i < output.data.size(); ++i) {
+    for (int i = 0; i < total_pixels; ++i) {
         if (output.data[i] == 128) {
             output.data[i] = 0;
         }

@@ -1,24 +1,28 @@
 #include "processing.h"
 #include <cmath>
+#include <vector>
+#include <algorithm>
+#include <cstdint>
 
-void applySobel(const Image& input, Image& mag, Image& dir) {
-    // Set up dimensions for output images
+void applySobel(const Image& input, Image& mag, Image& dir, bool use_l2) {
     int w = input.width;
     int h = input.height;
     
-    mag.width = w;
-    mag.height = h;
-    mag.data.assign(w * h, 0); // Initialize array with zeros
+    // تخصيص الذاكرة المحاذية للمخرجات
+    mag.allocate(w, h);
+    dir.allocate(w, h);
 
-    dir.width = w;
-    dir.height = h;
-    dir.data.assign(w * h, 0); // Initialize array with zeros
+    // المصفوفات الداخلية دي عادية لأنها local وتنتهي بنهاية الدالة
+    std::vector<int16_t> gx_array(w * h, 0);
+    std::vector<int16_t> gy_array(w * h, 0);
+    std::vector<int32_t> raw_mag(w * h, 0);
 
-    // Loop through all image pixels (ignoring outer edges for border handling)
+    int max_mag = 0;
+
     for (int y = 1; y < h - 1; ++y) {
         for (int x = 1; x < w - 1; ++x) {
+            int idx = y * w + x;
             
-            // Calculate horizontal gradient (Sobel X)
             int gx = -1 * input.data[(y - 1) * w + (x - 1)] 
                      +1 * input.data[(y - 1) * w + (x + 1)]
                      -2 * input.data[y * w + (x - 1)] 
@@ -26,7 +30,6 @@ void applySobel(const Image& input, Image& mag, Image& dir) {
                      -1 * input.data[(y + 1) * w + (x - 1)] 
                      +1 * input.data[(y + 1) * w + (x + 1)];
 
-            // Calculate vertical gradient (Sobel Y)
             int gy = -1 * input.data[(y - 1) * w + (x - 1)] 
                      -2 * input.data[(y - 1) * w + x] 
                      -1 * input.data[(y - 1) * w + (x + 1)]
@@ -34,30 +37,50 @@ void applySobel(const Image& input, Image& mag, Image& dir) {
                      +2 * input.data[(y + 1) * w + x] 
                      +1 * input.data[(y + 1) * w + (x + 1)];
 
-            // 1. Calculate edge magnitude using L2 Norm
-            int magnitude = std::round(std::sqrt(gx * gx + gy * gy));
-            if (magnitude > 255) magnitude = 255; // Ensure value does not exceed 255
-            mag.data[y * w + x] = static_cast<unsigned char>(magnitude);
+            gx_array[idx] = static_cast<int16_t>(gx);
+            gy_array[idx] = static_cast<int16_t>(gy);
 
-            // 2. Calculate edge direction
-            float angle = std::atan2(gy, gx) * 180.0f / M_PI;
-            if (angle < 0) {
-                angle += 180.0f; // Normalize angles to be between 0 and 180
-            }
-
-            // Approximate angle to 4 basic directions (0, 45, 90, 135)
-            unsigned char direction = 0;
-            if (angle >= 22.5 && angle < 67.5) {
-                direction = 45;
-            } else if (angle >= 67.5 && angle < 112.5) {
-                direction = 90;
-            } else if (angle >= 112.5 && angle < 157.5) {
-                direction = 135;
+            // تعديل شرط الـ Magnitude لدعم الطريقتين طبقاً للدليل
+            int magnitude = 0;
+            if (use_l2) {
+                // L2 norm: mathematically correct 
+                magnitude = std::round(std::sqrt(gx * gx + gy * gy));
             } else {
-                direction = 0; // Angles close to 0 or 180
+                // L1 norm: |Gx| + |Gy| - integer only, fast 
+                magnitude = std::abs(gx) + std::abs(gy);
+            }
+            raw_mag[idx] = magnitude;
+
+            if (magnitude > max_mag) {
+                max_mag = magnitude;
             }
 
-            dir.data[y * w + x] = direction;
+            int ax = std::abs(gx);
+            int ay = std::abs(gy);
+            unsigned char direction = 0;
+
+            if (5 * ay < 2 * ax) {
+                direction = 0;  
+            } else if (5 * ay > 12 * ax) {
+                direction = 90; 
+            } else {
+                if (gx * gy > 0) {
+                    direction = 135; 
+                } else {
+                    direction = 45;
+                }
+            }
+            dir.data[idx] = direction;
+        }
+    }
+
+    if (max_mag == 0) max_mag = 1;
+
+    for (int y = 1; y < h - 1; ++y) {
+        for (int x = 1; x < w - 1; ++x) {
+            int idx = y * w + x;
+            int normalized_mag = (raw_mag[idx] * 255) / max_mag; // عمل Two-Passes للـ Normalization [cite: 85]
+            mag.data[idx] = static_cast<unsigned char>(normalized_mag);
         }
     }
 }
