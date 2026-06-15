@@ -1,5 +1,7 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -O3 -Wall -Iinclude
+OPT ?= -O3
+
+CXXFLAGS = -std=c++17 $(OPT) -Wall -Iinclude
 
 ifeq ($(RVV), 1)
     RVV_FLAGS = -march=rv64gcv -mabi=lp64d

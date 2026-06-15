@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include "image.h"
 #include "processing.h"
+#include "benchmark.h"
 
 // قراءة ملف Raw (بدون header) باستخدام الـ Aligned Allocation الجديد
 Image readRaw(const std::string& filename, int width, int height) {
@@ -50,7 +51,13 @@ int main(int argc, char* argv[]) {
 
     // 2. Gaussian Blur 
     std::cout << "Applying Gaussian Blur..." << std::endl;
-    Image blurred = applyGaussianBlur(input);
+
+Image blurred;
+
+MEASURE_TIME("Gaussian Blur (100 iterations)",
+    for(int i = 0; i < 100; i++)
+        blurred = applyGaussianBlur(input)
+);
     
     // 3. Sobel Operator 
     std::cout << "Applying Sobel Operator..." << std::endl;
@@ -60,7 +67,10 @@ int main(int argc, char* argv[]) {
     // true  -> تشغيل الـ L2 Norm (الرياضية الدقيقة باستخدام الجذر التربيعي)
     // false -> تشغيل الـ L1 Norm (الصحيحة السريعة والمطلوبة لاحقاً للـ RVV Intrinsics)
     bool use_l2 = true; 
-    applySobel(blurred, magnitude, direction, use_l2);
+    MEASURE_TIME("Sobel (100 iterations)",
+    for(int i = 0; i < 100; i++)
+        applySobel(blurred, magnitude, direction, use_l2)
+);
     
     // 4. Non-Maximum Suppression 
     std::cout << "Applying Non-Maximum Suppression..." << std::endl;

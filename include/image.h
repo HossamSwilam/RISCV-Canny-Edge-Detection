@@ -13,7 +13,16 @@ struct Image {
             data = static_cast<unsigned char*>(aligned_alloc(64, w * h));
         }
     }
+void allocate(int w, int h) {
+    free_memory();
 
+    width = w;
+    height = h;
+
+    if (w > 0 && h > 0) {
+        data = static_cast<unsigned char*>(aligned_alloc(64, w * h));
+    }
+}
     // عشان ننضف الـ Memory (Memory Management)
     void free_memory() {
         if (data != nullptr) {
