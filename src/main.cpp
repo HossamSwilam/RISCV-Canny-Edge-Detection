@@ -1,90 +1,88 @@
 #include <iostream>
 #include <fstream>
-#include <vector>
 #include <string>
+#include <cstdlib>
 #include "image.h"
 #include "processing.h"
 
-// Function to read PGM images (P5 Binary format)
-Image readPGM(const std::string& filename) {
+// قراءة ملف Raw (بدون header)
+Image readRaw(const std::string& filename, int width, int height) {
+    Image img(width, height);
     std::ifstream file(filename, std::ios::binary);
+    
     if (!file) {
         std::cerr << "Error: Could not open file " << filename << std::endl;
-        return {0, 0, {}};
+        img.free_memory();
+        return {0, 0};
     }
 
-    std::string magic;
-    int width, height, maxVal;
-    file >> magic >> width >> height >> maxVal;
-    file.ignore(); // Skip the newline character after the header
-
-    if (magic != "P5") {
-        std::cerr << "Error: Only P5 PGM files are supported!" << std::endl;
-        return {0, 0, {}};
-    }
-
-    Image img;
-    img.width = width;
-    img.height = height;
-    img.data.resize(width * height);
-    file.read(reinterpret_cast<char*>(img.data.data()), width * height);
-    
+    file.read(reinterpret_cast<char*>(img.data), width * height);
     return img;
 }
 
-// Function to save images in PGM format
-bool writePGM(const std::string& filename, const Image& img) {
+// حفظ ملف Raw
+bool writeRaw(const std::string& filename, const Image& img) {
     std::ofstream file(filename, std::ios::binary);
     if (!file) return false;
 
-    file << "P5\n" << img.width << " " << img.height << "\n255\n";
-    file.write(reinterpret_cast<const char*>(img.data.data()), img.data.size());
-    
+    file.write(reinterpret_cast<const char*>(img.data), img.width * img.height);
     return true;
 }
 
-int main() {
-    std::cout << "--- Canny Edge Detection (Scalar Version) ---" << std::endl;
-
-    // 1. Read the image (Ensure 'input.pgm' exists in the project folder)
-    std::string inputPath = "input.pgm";
-    Image input = readPGM(inputPath);
-    
-    if (input.data.empty()) {
-        std::cout << "Please make sure 'input.pgm' exists in the project folder." << std::endl;
+int main(int argc, char* argv[]) {
+    // الدليل طالب إن الـ Caller يحدد الـ Width والـ Height
+    if (argc != 4) {
+        std::cerr << "Usage: " << argv[0] << " <input.raw> <width> <height>" << std::endl;
         return -1;
     }
 
+    std::string inputPath = argv[1];
+    int width = std::stoi(argv[2]);
+    int height = std::stoi(argv[3]);
+
+    std::cout << "--- Canny Edge Detection (Scalar Version) ---" << std::endl;
+
+    // 1. Read Raw Image
+    Image input = readRaw(inputPath, width, height);
+    if (!input.data) return -1;
     std::cout << "Image loaded: " << input.width << "x" << input.height << std::endl;
 
-    // 2. Stage 1: Gaussian Blur 
+    // 2. Gaussian Blur 
     std::cout << "Applying Gaussian Blur..." << std::endl;
     Image blurred = applyGaussianBlur(input);
     
-    // 3. Stage 2: Sobel Operator 
+    // 3. Sobel Operator 
     std::cout << "Applying Sobel Operator..." << std::endl;
-    Image magnitude, direction;
+    Image magnitude(width, height), direction(width, height);
     applySobel(blurred, magnitude, direction);
     
-    // 4. Stage 3: Non-Maximum Suppression 
+    // 4. Non-Maximum Suppression 
     std::cout << "Applying Non-Maximum Suppression..." << std::endl;
     Image nmsResult = applyCannyPostProcessing(magnitude, direction);
 
-    // 5. Stage 4: Double Thresholding (Your Task)
+    // 5. Double Thresholding
     std::cout << "Applying Double Thresholding..." << std::endl;
-    // Using experimental values for thresholds (Low: 20, High: 60)
     Image threshResult = applyDoubleThresholding(nmsResult, 20, 60);
 
-    // 6. Stage 5: Hysteresis Edge Tracking (Your Task)
+    // 6. Hysteresis Edge Tracking
     std::cout << "Applying Hysteresis Edge Tracking..." << std::endl;
     Image finalResult = applyHysteresis(threshResult);
 
-    // 7. Save the final result
-    if (writePGM("output.pgm", finalResult)) {
-        std::cout << "Success! Output saved as output.pgm" << std::endl;
+    // 7. Save the final result as RAW
+    if (writeRaw("output.raw", finalResult)) {
+        std::cout << "Success! Output saved as output.raw" << std::endl;
     } else {
         std::cerr << "Error saving output file." << std::endl;
     }
+
+    // تحرير الذاكرة
+    input.free_memory();
+    blurred.free_memory();
+    magnitude.free_memory();
+    direction.free_memory();
+    nmsResult.free_memory();
+    threshResult.free_memory();
+    finalResult.free_memory();
 
     return 0;
 }
