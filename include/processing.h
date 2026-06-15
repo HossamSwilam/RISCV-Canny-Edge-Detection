@@ -4,6 +4,7 @@
 
 Image applyGaussianBlur(const Image& input);
 void applySobel(const Image& input, Image& magnitude, Image& direction);
+void applySobelRVV(const Image& input, Image& magnitude, Image& direction);
 Image applyCannyPostProcessing(const Image& magnitude, const Image& direction);
 
 // Double Thresholding and Hysteresis functions
