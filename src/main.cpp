@@ -5,15 +5,16 @@
 #include "image.h"
 #include "processing.h"
 
-// قراءة ملف Raw (بدون header)
+// قراءة ملف Raw (بدون header) باستخدام الـ Aligned Allocation الجديد
 Image readRaw(const std::string& filename, int width, int height) {
-    Image img(width, height);
-    std::ifstream file(filename, std::ios::binary);
+    Image img;
+    img.allocate(width, height); // تخصيص الذاكرة المحاذية لـ 64 بايت لرفع أداء الـ SIMD
     
+    std::ifstream file(filename, std::ios::binary);
     if (!file) {
         std::cerr << "Error: Could not open file " << filename << std::endl;
         img.free_memory();
-        return {0, 0};
+        return img; // هيرجع كائن فارغ والـ data جواه بـ nullptr
     }
 
     file.read(reinterpret_cast<char*>(img.data), width * height);
@@ -30,7 +31,7 @@ bool writeRaw(const std::string& filename, const Image& img) {
 }
 
 int main(int argc, char* argv[]) {
-    // الدليل طالب إن الـ Caller يحدد الـ Width والـ Height
+    // الدليل يشترط أن يقوم الـ Caller بتحديد الـ Width والـ Height عبر الـ Command Line
     if (argc != 4) {
         std::cerr << "Usage: " << argv[0] << " <input.raw> <width> <height>" << std::endl;
         return -1;
@@ -53,8 +54,13 @@ int main(int argc, char* argv[]) {
     
     // 3. Sobel Operator 
     std::cout << "Applying Sobel Operator..." << std::endl;
-    Image magnitude(width, height), direction(width, height);
-    applySobel(blurred, magnitude, direction);
+    Image magnitude, direction; // تعريف الكائنات فقط، لأن دالة الـ Sobel تقوم بعمل allocate داخلياً لها
+    
+    // طبقاً لقسم (2.4) في الدليل، ندعم الطريقتين لحساب الـ Magnitude:
+    // true  -> تشغيل الـ L2 Norm (الرياضية الدقيقة باستخدام الجذر التربيعي)
+    // false -> تشغيل الـ L1 Norm (الصحيحة السريعة والمطلوبة لاحقاً للـ RVV Intrinsics)
+    bool use_l2 = true; 
+    applySobel(blurred, magnitude, direction, use_l2);
     
     // 4. Non-Maximum Suppression 
     std::cout << "Applying Non-Maximum Suppression..." << std::endl;
@@ -75,7 +81,7 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error saving output file." << std::endl;
     }
 
-    // تحرير الذاكرة
+    // تحرير الذاكرة بالكامل لجميع المصفوفات لمنع حدوث Memory Leaks
     input.free_memory();
     blurred.free_memory();
     magnitude.free_memory();
