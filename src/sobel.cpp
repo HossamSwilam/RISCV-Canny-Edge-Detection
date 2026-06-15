@@ -1,24 +1,37 @@
 #include "processing.h"
 #include <cmath>
+#include <vector>
+#include <algorithm>
+#include <cstdint>
 
 void applySobel(const Image& input, Image& mag, Image& dir) {
-    // Set up dimensions for output images
     int w = input.width;
     int h = input.height;
     
     mag.width = w;
     mag.height = h;
-    mag.data.assign(w * h, 0); // Initialize array with zeros
+    mag.data.assign(w * h, 0); // تهيئة بأصفار
 
     dir.width = w;
     dir.height = h;
-    dir.data.assign(w * h, 0); // Initialize array with zeros
+    dir.data.assign(w * h, 0); // تهيئة بأصفار
 
-    // Loop through all image pixels (ignoring outer edges for border handling)
+    // 1. استخدام Structure of Arrays (SoA) وتخزين Gx و Gy بشكل منفصل
+    // نوع int16_t مهم جداً عشان مرحلة الـ RVV Vectorization
+    std::vector<int16_t> gx_array(w * h, 0);
+    std::vector<int16_t> gy_array(w * h, 0);
+    
+    // مصفوفة مؤقتة لتخزين الـ Magnitude قبل الـ Normalization
+    std::vector<int32_t> raw_mag(w * h, 0);
+
+    int max_mag = 0;
+
+    // --- Pass 1: حساب الـ Gradients والاتجاهات وأكبر Magnitude ---
     for (int y = 1; y < h - 1; ++y) {
         for (int x = 1; x < w - 1; ++x) {
+            int idx = y * w + x;
             
-            // Calculate horizontal gradient (Sobel X)
+            // حساب Sobel X
             int gx = -1 * input.data[(y - 1) * w + (x - 1)] 
                      +1 * input.data[(y - 1) * w + (x + 1)]
                      -2 * input.data[y * w + (x - 1)] 
@@ -26,7 +39,7 @@ void applySobel(const Image& input, Image& mag, Image& dir) {
                      -1 * input.data[(y + 1) * w + (x - 1)] 
                      +1 * input.data[(y + 1) * w + (x + 1)];
 
-            // Calculate vertical gradient (Sobel Y)
+            // حساب Sobel Y
             int gy = -1 * input.data[(y - 1) * w + (x - 1)] 
                      -2 * input.data[(y - 1) * w + x] 
                      -1 * input.data[(y - 1) * w + (x + 1)]
@@ -34,30 +47,51 @@ void applySobel(const Image& input, Image& mag, Image& dir) {
                      +2 * input.data[(y + 1) * w + x] 
                      +1 * input.data[(y + 1) * w + (x + 1)];
 
-            // 1. Calculate edge magnitude using L2 Norm
+            // تخزين القيم في الـ Arrays (Phase 6 هتحتاج ده جداً)
+            gx_array[idx] = static_cast<int16_t>(gx);
+            gy_array[idx] = static_cast<int16_t>(gy);
+
+            // 2. حساب الـ Magnitude (بدون Clamp في اللفة دي)
             int magnitude = std::round(std::sqrt(gx * gx + gy * gy));
-            if (magnitude > 255) magnitude = 255; // Ensure value does not exceed 255
-            mag.data[y * w + x] = static_cast<unsigned char>(magnitude);
+            raw_mag[idx] = magnitude;
 
-            // 2. Calculate edge direction
-            float angle = std::atan2(gy, gx) * 180.0f / M_PI;
-            if (angle < 0) {
-                angle += 180.0f; // Normalize angles to be between 0 and 180
+            // تحديث أكبر قيمة عشان الـ Normalization
+            if (magnitude > max_mag) {
+                max_mag = magnitude;
             }
 
-            // Approximate angle to 4 basic directions (0, 45, 90, 135)
+            // 3. حساب الاتجاهات بدون atan2 وبدون أرقام كسرية (Integer Cross-Multiplication)
+            
+            int ax = std::abs(gx);
+            int ay = std::abs(gy);
             unsigned char direction = 0;
-            if (angle >= 22.5 && angle < 67.5) {
-                direction = 45;
-            } else if (angle >= 67.5 && angle < 112.5) {
-                direction = 90;
-            } else if (angle >= 112.5 && angle < 157.5) {
-                direction = 135;
-            } else {
-                direction = 0; // Angles close to 0 or 180
-            }
 
-            dir.data[y * w + x] = direction;
+            if (5 * ay < 2 * ax) {
+                direction = 0;   // زاوية قريبة من 0
+            } else if (5 * ay > 12 * ax) {
+                direction = 90;  // زاوية قريبة من 90
+            } else {
+                // الزوايا القطرية (الـ Diagonal)
+                // في إحداثيات الصور الـ Y بتزيد لتحت، فالإشارات بتحدد الاتجاه
+                if (gx * gy > 0) {
+                    direction = 135; 
+                } else {
+                    direction = 45;
+                }
+            }
+            dir.data[idx] = direction;
+        }
+    }
+
+    // --- Pass 2: عمل Normalization للـ Magnitude عشان يكون بين [0, 255] ---
+    if (max_mag == 0) max_mag = 1; // حماية عشان مانقسمش على صفر لو الصورة كلها سودة
+
+    for (int y = 1; y < h - 1; ++y) {
+        for (int x = 1; x < w - 1; ++x) {
+            int idx = y * w + x;
+            // التحويل لـ 0-255 باستخدام ضرب وقسمة أرقام صحيحة (Integer Math)
+            int normalized_mag = (raw_mag[idx] * 255) / max_mag;
+            mag.data[idx] = static_cast<unsigned char>(normalized_mag);
         }
     }
 }
