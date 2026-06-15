@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 
-void applySobel(const Image& input, Image& mag, Image& dir) {
+void applySobel(const Image& input, Image& mag, Image& dir, bool use_l2) {
     int w = input.width;
     int h = input.height;
     
@@ -40,7 +40,15 @@ void applySobel(const Image& input, Image& mag, Image& dir) {
             gx_array[idx] = static_cast<int16_t>(gx);
             gy_array[idx] = static_cast<int16_t>(gy);
 
-            int magnitude = std::round(std::sqrt(gx * gx + gy * gy));
+            // تعديل شرط الـ Magnitude لدعم الطريقتين طبقاً للدليل
+            int magnitude = 0;
+            if (use_l2) {
+                // L2 norm: mathematically correct 
+                magnitude = std::round(std::sqrt(gx * gx + gy * gy));
+            } else {
+                // L1 norm: |Gx| + |Gy| - integer only, fast 
+                magnitude = std::abs(gx) + std::abs(gy);
+            }
             raw_mag[idx] = magnitude;
 
             if (magnitude > max_mag) {
@@ -71,7 +79,7 @@ void applySobel(const Image& input, Image& mag, Image& dir) {
     for (int y = 1; y < h - 1; ++y) {
         for (int x = 1; x < w - 1; ++x) {
             int idx = y * w + x;
-            int normalized_mag = (raw_mag[idx] * 255) / max_mag;
+            int normalized_mag = (raw_mag[idx] * 255) / max_mag; // عمل Two-Passes للـ Normalization [cite: 85]
             mag.data[idx] = static_cast<unsigned char>(normalized_mag);
         }
     }
