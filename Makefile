@@ -46,12 +46,7 @@ tests/%.o: tests/%.cpp
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
 
-$(TEST_TARGET): src/canny_ops.o \
-                src/gaussian.o \
-                src/sobel.o \
-                src/gaussian_blur_rvv.o \
-                src/sobel_rvv.o \
-                $(TEST_OBJS)
+$(TEST_TARGET): $(filter-out src/main.o, $(APP_OBJS)) $(TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $(TEST_TARGET) $(LIBS)
 
 # ===== CLEAN =====
