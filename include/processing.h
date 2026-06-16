@@ -3,6 +3,9 @@
 #include "image.h"
 
 Image applyGaussianBlur(const Image& input);
+
+
+void applySobelRVV(const Image& input, Image& magnitude, Image& direction);
 void applySobel(const Image& input, Image& mag, Image& dir, bool use_l2 = true);
 Image applyCannyPostProcessing(const Image& magnitude, const Image& direction);
 
