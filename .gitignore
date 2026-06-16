@@ -4,3 +4,5 @@ build/
 run_tests
 canny_edge_detection
 *.savebuild/
+canny_scalar_rv
+*.raw

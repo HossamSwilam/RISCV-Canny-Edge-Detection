@@ -2,6 +2,7 @@
 #include <fstream>
 #include <string>
 #include <cstdlib>
+#include <chrono> // 1. إضافة مكتبة حساب الوقت
 #include "image.h"
 #include "processing.h"
 
@@ -41,38 +42,87 @@ int main(int argc, char* argv[]) {
     int width = std::stoi(argv[2]);
     int height = std::stoi(argv[3]);
 
-    std::cout << "--- Canny Edge Detection (Scalar Version) ---" << std::endl;
+    std::cout << "--- Canny Edge Detection (Scalar Version with Profiling) ---" << std::endl;
 
     // 1. Read Raw Image
     Image input = readRaw(inputPath, width, height);
     if (!input.data) return -1;
     std::cout << "Image loaded: " << input.width << "x" << input.height << std::endl;
 
+    // =========================================================================
     // 2. Gaussian Blur 
+    // =========================================================================
     std::cout << "Applying Gaussian Blur..." << std::endl;
+    auto start_gaussian = std::chrono::high_resolution_clock::now();
+    
     Image blurred = applyGaussianBlur(input);
     
+    auto end_gaussian = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> duration_gaussian = end_gaussian - start_gaussian;
+
+    // =========================================================================
     // 3. Sobel Operator 
+    // =========================================================================
     std::cout << "Applying Sobel Operator..." << std::endl;
-    Image magnitude, direction; // تعريف الكائنات فقط، لأن دالة الـ Sobel تقوم بعمل allocate داخلياً لها
-    
-    // طبقاً لقسم (2.4) في الدليل، ندعم الطريقتين لحساب الـ Magnitude:
-    // true  -> تشغيل الـ L2 Norm (الرياضية الدقيقة باستخدام الجذر التربيعي)
-    // false -> تشغيل الـ L1 Norm (الصحيحة السريعة والمطلوبة لاحقاً للـ RVV Intrinsics)
+    Image magnitude, direction;
     bool use_l2 = true; 
+    
+    auto start_sobel = std::chrono::high_resolution_clock::now();
+    
     applySobel(blurred, magnitude, direction, use_l2);
     
+    auto end_sobel = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> duration_sobel = end_sobel - start_sobel;
+
+    // =========================================================================
     // 4. Non-Maximum Suppression 
+    // =========================================================================
     std::cout << "Applying Non-Maximum Suppression..." << std::endl;
+    auto start_nms = std::chrono::high_resolution_clock::now();
+    
     Image nmsResult = applyCannyPostProcessing(magnitude, direction);
+    
+    auto end_nms = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> duration_nms = end_nms - start_nms;
 
+    // =========================================================================
     // 5. Double Thresholding
+    // =========================================================================
     std::cout << "Applying Double Thresholding..." << std::endl;
+    auto start_thresh = std::chrono::high_resolution_clock::now();
+    
     Image threshResult = applyDoubleThresholding(nmsResult, 20, 60);
+    
+    auto end_thresh = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> duration_thresh = end_thresh - start_thresh;
 
+    // =========================================================================
     // 6. Hysteresis Edge Tracking
+    // =========================================================================
     std::cout << "Applying Hysteresis Edge Tracking..." << std::endl;
+    auto start_hysteresis = std::chrono::high_resolution_clock::now();
+    
     Image finalResult = applyHysteresis(threshResult);
+    
+    auto end_hysteresis = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> duration_hysteresis = end_hysteresis - start_hysteresis;
+
+    // =========================================================================
+    // 📊 طبع تقرير الأداء (Performance Report)
+    // =========================================================================
+    double total_time = duration_gaussian.count() + duration_sobel.count() + 
+                        duration_nms.count() + duration_thresh.count() + 
+                        duration_hysteresis.count();
+
+    std::cout << "\n================ PERFORMANCE REPORT ================\n";
+    std::cout << "1. Gaussian Blur      : " << duration_gaussian.count()   << " ms\n";
+    std::cout << "2. Sobel Operator      : " << duration_sobel.count()      << " ms\n";
+    std::cout << "3. Non-Max Suppression : " << duration_nms.count()        << " ms\n";
+    std::cout << "4. Double Threshold    : " << duration_thresh.count()     << " ms\n";
+    std::cout << "5. Hysteresis Tracking : " << duration_hysteresis.count() << " ms\n";
+    std::cout << "----------------------------------------------------\n";
+    std::cout << "Total Pipeline Time    : " << total_time                  << " ms\n";
+    std::cout << "====================================================\n\n";
 
     // 7. Save the final result as RAW
     if (writeRaw("output.raw", finalResult)) {
@@ -81,7 +131,7 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error saving output file." << std::endl;
     }
 
-    // تحرير الذاكرة بالكامل لجميع المصفوفات لمنع حدوث Memory Leaks
+    // تحرير الذاكرة
     input.free_memory();
     blurred.free_memory();
     magnitude.free_memory();
