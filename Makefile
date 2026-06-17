@@ -1,17 +1,18 @@
 # Default Compiler is native (x86)
 CXX ?= g++
 OPT ?= -O3
+VLEN ?= 128
 
-# 🌟 التعديل الأول: تفعيل الـ Cross-Compiler أوتوماتيك لو RVV=1
+# 🌟 تفعيل الـ Cross-Compiler أوتوماتيك لو RVV=1
 ifeq ($(RVV), 1)
     CXX = riscv64-linux-gnu-g++
-    # ضفنا -D__riscv_vector عشان نفعل الـ #ifdef في الكود
+    # -march=rv64gcv: تفعيل تعليمات RISC-V مع دعم الفيكتور
     RVV_FLAGS = -march=rv64gcv -mabi=lp64d -D__riscv_vector
 else
     RVV_FLAGS =
 endif
 
-# 🌟 التعديل التاني: دمج الـ RVV_FLAGS جوه الـ CXXFLAGS عشان الكومبايلر يشوفها
+# 🌟 دمج الـ Flags للكومبايلر
 CXXFLAGS = -std=c++17 $(OPT) -Wall -Iinclude $(RVV_FLAGS)
 
 # ===== APP SOURCES =====
@@ -56,9 +57,10 @@ test: $(TEST_TARGET)
 $(TEST_TARGET): $(filter-out src/main.o, $(APP_OBJS)) $(TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $(TEST_TARGET) $(LIBS)
 
-# 🌟 التعديل التالت: أمر جديد لتشغيل المحاكي QEMU مع تفعيل الفيكتور (VLEN=128)
+# 🌟 تشغيل المحاكي QEMU مع إمكانية تغيير الـ VLEN من التيرمينال
+# مثال: make run-rvv VLEN=256
 run-rvv: $(TARGET)
-	qemu-riscv64 -L /usr/riscv64-linux-gnu -cpu rv64,v=true,vlen=128 ./$(TARGET) input.raw 512 512
+	qemu-riscv64 -L /usr/riscv64-linux-gnu -cpu rv64,v=true,vlen=$(VLEN) ./$(TARGET) input.raw 512 512
 
 # ===== CLEAN =====
 clean:
