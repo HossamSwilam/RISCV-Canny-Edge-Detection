@@ -1,5 +1,7 @@
-CXX = g++
-CXXFLAGS = -std=c++17 -O3 -Wall -Iinclude
+CXX = riscv64-linux-gnu-g++
+HOST_CXX = g++
+
+CXXFLAGS = -std=c++17 -O3 -Wall -Iinclude $(RVV_FLAGS)
 
 ifeq ($(RVV), 1)
     RVV_FLAGS = -march=rv64gcv -mabi=lp64d
@@ -7,7 +9,7 @@ else
     RVV_FLAGS =
 endif
 
-# ===== APP SOURCES (WITHOUT main in tests) =====
+# ===== SOURCES =====
 APP_SRCS = src/canny_ops.cpp \
            src/gaussian.cpp \
            src/sobel.cpp \
@@ -17,7 +19,6 @@ APP_SRCS = src/canny_ops.cpp \
 
 APP_OBJS = $(APP_SRCS:.cpp=.o)
 
-# ===== TEST SOURCES =====
 TEST_SRCS = tests/test_gaussian.cpp \
             tests/test_sobel.cpp \
             tests/test_canny.cpp
@@ -33,21 +34,22 @@ TEST_TARGET = run_tests
 all: $(TARGET)
 
 $(TARGET): $(APP_OBJS)
-	$(CXX) $(CXXFLAGS) $(APP_OBJS) -o $(TARGET)
+	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# ===== OBJECT RULES =====
+# ===== OBJECT RULES (RISC-V APP) =====
 src/%.o: src/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+# ===== TEST OBJECTS (HOST) =====
 tests/%.o: tests/%.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(HOST_CXX) $(CXXFLAGS) -c $< -o $@
 
-# ===== TESTS =====
+# ===== TEST EXECUTION (HOST ONLY) =====
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
 
 $(TEST_TARGET): $(filter-out src/main.o, $(APP_OBJS)) $(TEST_OBJS)
-	$(CXX) $(CXXFLAGS) $^ -o $(TEST_TARGET) $(LIBS)
+	$(HOST_CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
 
 # ===== CLEAN =====
 clean:
