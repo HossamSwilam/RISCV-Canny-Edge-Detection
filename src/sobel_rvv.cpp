@@ -1,4 +1,4 @@
-#include "processing.h"
+#include "image.h" // تأكد أن هذا الهيدر يحتوي على تعريف الـ Image
 #include <cstdint>
 #include <cmath>
 
@@ -15,7 +15,8 @@ void applySobelRVV(const Image& input, Image& mag, Image& dir) {
     const int w = input.width;
     const int h = input.height;
 
-    // تخصيص الذاكرة المحاذية
+    // تأكد من تخصيص الذاكرة للصور الناتجة إذا لم تكن مخصصة مسبقاً
+    // (بافتراض أن struct Image يحتوي على دالة allocate)
     mag.allocate(w, h);
     dir.allocate(w, h);
 
@@ -34,9 +35,10 @@ void applySobelRVV(const Image& input, Image& mag, Image& dir) {
         int x = 1;
         while (x < w - 1) {
 
+            // تحديد طول الفيكتور بناءً على البكسلات المتبقية
             size_t vl = __riscv_vsetvl_e16m1((w - 1) - x);
 
-            // ── 1. Load & Widen ──────────────────────────────────────────────
+            // ── 1. Load & Widen (سحب وتوسيع إلى 16-bit) ──────────────────────
             vint16m1_t va_left  = __riscv_vreinterpret_v_u16m1_i16m1(__riscv_vzext_vf2_u16m1(__riscv_vle8_v_u8mf2(above + x - 1, vl), vl));
             vint16m1_t va_mid   = __riscv_vreinterpret_v_u16m1_i16m1(__riscv_vzext_vf2_u16m1(__riscv_vle8_v_u8mf2(above + x,     vl), vl));
             vint16m1_t va_right = __riscv_vreinterpret_v_u16m1_i16m1(__riscv_vzext_vf2_u16m1(__riscv_vle8_v_u8mf2(above + x + 1, vl), vl));
@@ -60,11 +62,11 @@ void applySobelRVV(const Image& input, Image& mag, Image& dir) {
             vint16m1_t abs_gy = __riscv_vmax_vv_i16m1(gy, __riscv_vneg_v_i16m1(gy, vl), vl);
             vint16m1_t vmag = __riscv_vmin_vv_i16m1(__riscv_vadd_vv_i16m1(abs_gx, abs_gy, vl), __riscv_vmv_v_x_i16m1(255, vl), vl);
 
-            // Store Magnitude
+            // تخزين الـ Magnitude
             vuint8mf2_t vmag8 = __riscv_vncvt_x_x_w_u8mf2(__riscv_vreinterpret_v_i16m1_u16m1(vmag), vl);
             __riscv_vse8_v_u8mf2(dst_mag + y * w + x, vmag8, vl);
 
-            // ── 4. 🔥 Vectorized Direction (تم تعديل ترتيب الـ vmerge هنا) ──
+            // ── 4. 🔥 Vectorized Direction ───────────────────────────────────
             vint16m1_t abs_gx_2 = __riscv_vsll_vx_i16m1(abs_gx, 1, vl); // 2 * |Gx|
             vint16m1_t abs_gy_2 = __riscv_vsll_vx_i16m1(abs_gy, 1, vl); // 2 * |Gy|
 
@@ -75,13 +77,13 @@ void applySobelRVV(const Image& input, Image& mag, Image& dir) {
             vbool16_t gy_neg = __riscv_vmslt_vx_i16m1_b16(gy, 0, vl);
             vbool16_t opp_sign = __riscv_vmxor_mm_b16(gx_neg, gy_neg, vl); 
 
-            // الترتيب الصحيح: (fallback_vector, scalar_value, mask, vl)
+            // الترتيب الصحيح لدالة vmerge في أحدث إصدارات RVV
             vint16m1_t vdir = __riscv_vmv_v_x_i16m1(45, vl); // الاتجاه الافتراضي
             vdir = __riscv_vmerge_vxm_i16m1(vdir, 135, opp_sign, vl); 
             vdir = __riscv_vmerge_vxm_i16m1(vdir, 0, mask_0, vl);     
             vdir = __riscv_vmerge_vxm_i16m1(vdir, 90, mask_90, vl);   
 
-            // Store Direction
+            // تخزين الـ Direction
             vuint8mf2_t vdir8 = __riscv_vncvt_x_x_w_u8mf2(__riscv_vreinterpret_v_i16m1_u16m1(vdir), vl);
             __riscv_vse8_v_u8mf2(dst_dir + y * w + x, vdir8, vl);
 
