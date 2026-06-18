@@ -73,7 +73,7 @@ int main() {
     // 5. Stage 4: Double Thresholding (Your Task)
     std::cout << "Applying Double Thresholding..." << std::endl;
     // Using experimental values for thresholds (Low: 20, High: 60)
-    Image threshResult = applyDoubleThresholding(nmsResult, 20, 60);
+    Image threshResult = applyDoubleThresholding(nmsResult, 80, 200);
 
     // 6. Stage 5: Hysteresis Edge Tracking (Your Task)
     std::cout << "Applying Hysteresis Edge Tracking..." << std::endl;
