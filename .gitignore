@@ -1,0 +1,14 @@
+# Ignore binaries
+*.o
+*.a
+*.so
+canny_scalar
+
+# Ignore images
+*.raw
+*.pgm
+*.bmp
+*.jpg
+
+# Ignore IDE settings
+.vscode/
