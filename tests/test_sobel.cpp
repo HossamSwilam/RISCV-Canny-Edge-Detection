@@ -77,4 +77,39 @@ TEST(SobelTest, BothMagnitudeMethodsWork) {
     input.free_memory(); 
     mag_l2.free_memory(); dir_l2.free_memory();
     mag_l1.free_memory(); dir_l1.free_memory();
+    
+}
+TEST(SobelTest, RVV_MatchesScalar) {
+    // Non-power-of-two width forces the strip-mining tail case
+    Image input;
+    input.allocate(7, 5);
+    uint8_t vals[] = {
+        0,0,0,255,255,255,255,
+        0,0,0,255,255,255,255,
+        0,0,0,255,255,255,255,
+        0,0,0,255,255,255,255,
+        0,0,0,255,255,255,255
+    };
+    std::memcpy(input.data, vals, 35);
+
+    Image mag_s, dir_s, mag_r, dir_r;
+    applySobel(input, mag_s, dir_s, false);
+    applySobelRVV(input, mag_r, dir_r);
+
+    ASSERT_EQ(mag_s.width,  mag_r.width);
+    ASSERT_EQ(mag_s.height, mag_r.height);
+
+    for (int y = 1; y < 4; ++y) {
+        for (int x = 1; x < 6; ++x) {
+            int idx = y * 7 + x;
+            bool scalar_edge = mag_s.data[idx] > 0;
+            bool rvv_edge    = mag_r.data[idx] > 0;
+            EXPECT_EQ(scalar_edge, rvv_edge)
+                << "Mismatch at (" << x << "," << y << ")";
+        }
+    }
+
+    input.free_memory();
+    mag_s.free_memory(); dir_s.free_memory();
+    mag_r.free_memory(); dir_r.free_memory();
 }

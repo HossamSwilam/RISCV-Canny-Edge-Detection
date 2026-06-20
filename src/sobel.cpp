@@ -84,3 +84,7 @@ void applySobel(const Image& input, Image& mag, Image& dir, bool use_l2) {
         }
     }
 }
+// Two-pass normalization: we cannot normalize in the first pass
+// because the global maximum is unknown until all pixels are computed.
+// Single-pass would require a fixed divisor (loses dynamic range)
+// or storing all raw values first, which is what we do here.
