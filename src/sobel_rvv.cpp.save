@@ -1,0 +1,192 @@
+#include <riscv_vector.h>
+#include <vector>
+#include <cstdin// Assuming your function takes pointers to the Gx and Gy buffers (from Phase 2),
+// a pointer to the final output 8-bit image, and the total number of pixels.
+void applySobelMagnitudeRVV(const int16_t* Gx, const int16_t* Gy, uint8_t* output_mag, size_t total_pixels) {
+    
+    // We need a temporary buffer to store the raw 16-bit L1 magnitudes for Pass 1
+    std::vector<int16_t> temp_mag(total_pixels);
+    int16_t* temp_ptr = temp_mag.data();
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PASS 1 & TASK 2: Compute L1 Magnitude and Find Global Max
+    // ─────────────────────────────────────────────────────────────────────────
+    
+    size_t remaining = total_pixels;
+    const int16_t* gx_ptr = Gx;
+    const int16_t* gy_ptr = Gy;
+    int16_t* write_ptr = temp_ptr;
+
+    // Initialize a scalar accumulator for the global maximum.
+    // Intrinsic: Move a scalar value (0) into a vector register. 
+    // LMUL=1: We only need one register. If VLEN changes, this still just sets the first element to 0.
+    vint16m1_t max_acc = __riscv_vmv_s_x_i16m1(0, __riscv_vsetvlmax_e16m1());
+
+    // TASK 1: The Strip-Mining Loop. 
+    // This loops processes chunks of 'vl' pixels at a time until 'remaining' is 0.
+    for (size_t vl; remaining > 0; remaining -= vl) {
+        
+        // Intrinsic: Request maximum vector length for 16-bit elements with LMUL=1.
+        // VLEN effect: If VLEN=128, vl=8. If VLEN=256, vl=16. If VLEN=512, vl=32.
+        vl = __riscv_vsetvl_e16m1(remaining);
+
+        // TASK 2: Load Gx and Gy
+        // Intrinsic: Vector Load Elements (16-bit). 
+        // LMUL=1: Standard mapping of 1 vector register to memory.
+        vint16m1_t vec_gx = __riscv_vle16_v_i16m1(gx_ptr, vl);
+        vint16m1_t vec_gy = __riscv_vle16_v_i16m1(gy_ptr, vl);
+
+        // Compute Absolute Value of Gx: max(Gx, -Gx)
+        // Intrinsic: Vector Negate (multiply by -1).
+        vint16m1_t neg_gx = __riscv_vneg_v_i16m1(vec_gx, vl);
+        // Intrinsic: Vector Max (element-wise). Returns absolute value.
+        vint16m1_t abs_gx = __riscv_vmax_vv_i16m1(vec_gx, neg_gx, vl);
+
+        // Compute Absolute Value of Gy: max(Gy, -Gy)
+        vint16m1_t neg_gy = __riscv_vneg_v_i16m1(vec_gy, vl);
+        vint16m1_t abs_gy = __riscv_vmax_vv_i16m1(vec_gy, neg_gy, vl);
+
+        // Add Absolute Values (L1 Norm: |Gx| + |Gy|)
+        // Intrinsic: Vector Add. 
+        // LMUL=1: Fits perfectly in one register without grouping, reducing register pressure.
+        vint16m1_t mag_16 = __riscv_vadd_vv_i16m1(abs_gx, abs_gy, vl);
+
+        // Intrinsic: Vector Store Elements (16-bit). Saves raw magnitude to temp buffer.
+        __riscv_vse16_v_i16m1(write_ptr, mag_16, vl);
+
+        // TASK 3 (Pass 1): Find Global Maximum
+        // Intrinsic: Vector Reduction Max. Compares all elements in mag_16 against max_acc.
+        // LMUL=1: Standard reduction. If VLEN changes, the hardware handles collapsing the larger/smaller vector automatically.
+        max_acc = __riscv_vredmax_vs_i16m1_i16m1(mag_16, max_acc, vl);
+
+        // Advance pointers for the next strip-mining iteration
+        gx_ptr += vl;
+        gy_ptr += vl;
+        write_ptr += vl;
+    }
+
+    // Extract the final scalar max from the vector accumulator
+    // Intrinsic: Move Vector element 0 to Scalar.
+    int16_t global_max = __riscv_vmv_x_s_i16m1_i16(max_acc);
+    if (global_max == 0) global_max = 1; // Prevent division by zero on an all-black image
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TASK 3 (Pass 2): Normalize, Scale to [0, 255], and Store
+    // ─────────────────────────────────────────────────────────────────────────
+    
+    remaining = total_pixels;
+    const int16_t* read_ptr = temp_ptr;
+    uint8_t* out_ptr = output_mag;
+
+    for (size_t vl; remaining > 0; remaining -= vl) {
+        vl = __riscv_vsetvl_e16m1(remaining);
+
+        // Load raw 16-bit magnitudes
+        vint16m1_t mag_16 = __riscv_vle16_v_i16m1(read_ptr, vl);
+
+        // Scale by 255
+        // Intrinsic: Vector Multiply by Scalar. 
+        vint16m1_t scaled_16 = __riscv_vmul_vx_i16m1(mag_16, 255, vl);
+
+        // Divide by global_max
+        // Intrinsic: Vector Divide by Scalar. 
+        vint16m1_t norm_16 = __riscv_vdiv_vx_i16m1(scaled_16, global_max, vl);
+#include <riscv_vector.h>
+#include <vector>
+#include <cstdint>
+#include <algorithm>
+
+// Assuming your function takes pointers to the Gx and Gy buffers (from Phase 2),
+// a pointer to the final output 8-bit image, and the total number of pixels.
+void applySobelMagnitudeRVV(const int16_t* Gx, const int16_t* Gy, uint8_t* output_mag, size_t total_pixels) {
+    
+    // We need a temporary buffer to store the raw 16-bit L1 magnitudes for Pass 1
+    std::vector<int16_t> temp_mag(total_pixels);
+    int16_t* temp_ptr = temp_mag.data();
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PASS 1 & TASK 2: Compute L1 Magnitude and Find Global Max
+    // ─────────────────────────────────────────────────────────────────────────
+    
+    size_t remaining = total_pixels;
+    const int16_t* gx_ptr = Gx;
+    const int16_t* gy_ptr = Gy;
+    int16_t* write_ptr = temp_ptr;
+
+    // Initialize a scalar accumulator for the global maximum.
+    // Intrinsic: Move a scalar value (0) into a vector register. 
+    // LMUL=1: We only need one register. If VLEN changes, this still just sets the first element to 0.
+    vint16m1_t max_acc = __riscv_vmv_s_x_i16m1(0, __riscv_vsetvlmax_e16m1());
+
+    // TASK 1: The Strip-Mining Loop. 
+    // This loops processes chunks of 'vl' pixels at a time until 'remaining' is 0.
+    for (size_t vl; remaining > 0; remaining -= vl) {
+        
+        // Intrinsic: Request maximum vector length for 16-bit elements with LMUL=1.
+        // VLEN effect: If VLEN=128, vl=8. If VLEN=256, vl=16. If VLEN=512, vl=32.
+        vl = __riscv_vsetvl_e16m1(remaining);
+
+        // TASK 2: Load Gx and Gy
+        // Intrinsic: Vector Load Elements (16-bit). 
+        // LMUL=1: Standard mapping of 1 vector register to memory.
+        vint16m1_t vec_gx = __riscv_vle16_v_i16m1(gx_ptr, vl);
+        vint16m1_t vec_gy = __riscv_vle16_v_i16m1(gy_ptr, vl);
+
+        // Compute Absolute Value of Gx: max(Gx, -Gx)
+        // Intrinsic: Vector Negate (multiply by -1).
+        vint16m1_t neg_gx = __riscv_vneg_v_i16m1(vec_gx, vl);
+        // Intrinsic: Vector Max (element-wise). Returns absolute value.
+        vint16m1_t abs_gx = __riscv_vmax_vv_i16m1(vec_gx, neg_gx, vl);
+
+        // Compute Absolute Value of Gy: max(Gy, -Gy)
+        vint16m1_t neg_gy = __riscv_vneg_v_i16m1(vec_gy, vl);
+        vint16m1_t abs_gy = __riscv_vmax_vv_i16m1(vec_gy, neg_gy, vl);
+
+        // Add Absolute Values (L1 Norm: |Gx| + |Gy|)
+        // Intrinsic: Vector Add. 
+        // LMUL=1: Fits perfectly in one register without grouping, reducing register pressure.
+        vint16m1_t mag_16 = __riscv_vadd_vv_i16m1(abs_gx, abs_gy, vl);
+
+        // Intrinsic: Vector Store Elements (16-bit). Saves raw magnitude to temp buffer.
+        __riscv_vse16_v_i16m1(write_ptr, mag_16, vl);
+
+        // TASK 3 (Pass 1): Find Global Maximum
+        // Intrinsic: Vector Reduction Max. Compares all elements in mag_16 against max_acc.
+        // LMUL=1: Standard reduction. If VLEN changes, the hardware handles collapsing the larger/smaller vector automatically.
+        max_acc = __riscv_vredmax_vs_i16m1_i16m1(mag_16, max_acc, vl);
+
+        // Advance pointers for the next strip-mining iteration
+        gx_ptr += vl;
+        gy_ptr += vl;
+        write_ptr += vl;
+    }
+
+    // Extract the final scalar max from the vector accumulator
+    // Intrinsic: Move Vector element 0 to Scalar.
+    int16_t global_max = __riscv_vmv_x_s_i16m1_i16(max_acc);
+    if (global_max == 0) global_max = 1; // Prevent division by zero on an all-black image
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TASK 3 (Pass 2): Normalize, Scale to [0, 255], and Store
+    // ─────────────────────────────────────────────────────────────────────────
+    
+    remaining = total_pixels;
+    const int16_t* read_ptr = temp_ptr;
+    uint8_t* out_ptr = output_mag;
+
+    for (size_t vl; remaining > 0; remaining -= vl) {
+        vl = __riscv_vsetvl_e16m1(remaining);
+
+        // Load raw 16-bit magnitudes
+        vint16m1_t mag_16 = __riscv_vle16_v_i16m1(read_ptr, vl);
+
+        // Scale by 255
+        // Intrinsic: Vector Multiply by Scalar. 
+        vint16m1_t scaled_16 = __riscv_vmul_vx_i16m1(mag_16, 255, vl);
+
+        // Divide by global_max
+        // Intrinsic: Vector Divide by Scalar. 
+        vint16m1_t norm_16 = __riscv_vdiv_vx_i16m1(scaled_16, global_max, vl);
+
+        // Convert 16-bit vector to 8-bit vector (narrowing cast)
+      
