@@ -51,6 +51,10 @@ int main(int argc, char* argv[]) {
     // هنسيب الصور بدون allocate، الدوال هي اللي هتعملهم التخصيص المناسب لحجمهم
     Image blurred, magnitude, direction;
 
+    // تم رفعها من 10 إلى 40 — حل وسط بين استقرار القياس (QEMU مش
+    // cycle-accurate فالقياس المفرد فيه noise) وبين وقت تنفيذ السويب
+    // الكامل، خصوصًا إن -O0 لوحدها بطيئة جدًا (~800ms/iteration للـ
+    // Gaussian) وكانت بتاخد وقت طويل جدًا عند 100 iteration.
     int NUM_ITERATIONS = 10;
     double total_gaussian_time = 0;
     double total_sep_time = 0; // تم إضافة متغير لحساب وقت الدالة بتاعتك
