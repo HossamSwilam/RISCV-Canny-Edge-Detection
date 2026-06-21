@@ -93,6 +93,20 @@ make run-rvv VLEN=512 RVV=1
 > **Note:** `run-rvv` currently hardcodes `input.raw 512 512` in the Makefile target. Swap
 > in your own image path/dimensions there if needed.
 
+## 🚀 Canny Edge Detection Pipeline Results
+
+Here is the step-by-step output of our hardware-accelerated pipeline:
+
+| Original Input | Blurred (Gaussian) |
+| :---: | :---: |
+| <img src="assets/0_input.png" width="400"> | <img src="assets/1_blurred.png" width="400"> |
+
+| Magnitude (Sobel) | Final Edges (NMS) |
+| :---: | :---: |
+| <img src="assets/2_magnitude.png" width="400"> | <img src="assets/4_final_edges.png" width="400"> |
+
+> **Note:** The final edges demonstrate the success of our Non-Maximum Suppression and Double Thresholding implementation, resulting in crisp, 1-pixel thin continuous edges.
+
 ### Running host-side unit tests
 ```bash
 make test
