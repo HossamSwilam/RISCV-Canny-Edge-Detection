@@ -46,12 +46,14 @@ int main(int argc, char* argv[]) {
 
     Image input = readRaw(inputPath, width, height);
     if (!input.data) return -1;
-    
+    std::cout << "Image loaded: " << input.width << "x" << input.height << std::endl;
+
     // هنسيب الصور بدون allocate، الدوال هي اللي هتعملهم التخصيص المناسب لحجمهم
     Image blurred, magnitude, direction;
 
     int NUM_ITERATIONS = 10;
     double total_gaussian_time = 0;
+    double total_sep_time = 0; // تم إضافة متغير لحساب وقت الدالة بتاعتك
     double total_sobel_time = 0;
 
     std::cout << "Running Benchmarks (" << NUM_ITERATIONS << " iterations)..." << std::endl;
@@ -60,6 +62,7 @@ int main(int argc, char* argv[]) {
     // ================== SCALAR BENCHMARK ==================
     std::cout << "[Mode] SCALAR\n";
     
+    // 1. Gaussian Blur (2D)
     auto start_g = std::chrono::high_resolution_clock::now();
     for(int i = 0; i < NUM_ITERATIONS; i++) {
         if (i == NUM_ITERATIONS - 1) {
@@ -72,6 +75,16 @@ int main(int argc, char* argv[]) {
     auto end_g = std::chrono::high_resolution_clock::now();
     total_gaussian_time = std::chrono::duration<double, std::milli>(end_g - start_g).count() / NUM_ITERATIONS;
 
+    // 1.5 Separable Gaussian (للتجربة والتقرير فقط - الإضافة بتاعتك)
+    auto start_sep = std::chrono::high_resolution_clock::now();
+    for(int i = 0; i < NUM_ITERATIONS; i++) {
+        Image temp = gaussianSeparable(input);
+        temp.free_memory();
+    }
+    auto end_sep = std::chrono::high_resolution_clock::now();
+    total_sep_time = std::chrono::duration<double, std::milli>(end_sep - start_sep).count() / NUM_ITERATIONS;
+
+    // 2. Sobel Operator
     auto start_s = std::chrono::high_resolution_clock::now();
     for(int i = 0; i < NUM_ITERATIONS; i++) {
         if (i == NUM_ITERATIONS - 1) {
@@ -85,6 +98,11 @@ int main(int argc, char* argv[]) {
     }
     auto end_s = std::chrono::high_resolution_clock::now();
     total_sobel_time = std::chrono::duration<double, std::milli>(end_s - start_s).count() / NUM_ITERATIONS;
+
+    // (باقي خطوات Canny ممكن تتنفذ هنا مرة واحدة بدون قياس لو حابين نطلع الصورة النهائية)
+    std::cout << "Applying Non-Maximum Suppression..." << std::endl;
+    Image nmsResult = applyCannyPostProcessing(magnitude, direction);
+    nmsResult.free_memory();
 
 #else
     // ================== RVV BENCHMARK ==================
@@ -112,6 +130,9 @@ int main(int argc, char* argv[]) {
     // ================== PERFORMANCE REPORT ==================
     std::cout << "\n================ PERFORMANCE REPORT ================\n";
     std::cout << "1. Gaussian Blur (Avg) : " << total_gaussian_time << " ms\n";
+#ifndef __riscv_vector
+    std::cout << "   -> Separable (Test) : " << total_sep_time << " ms\n"; 
+#endif
     std::cout << "2. Sobel Op (Avg)      : " << total_sobel_time << " ms\n";
     std::cout << "====================================================\n\n";
 
