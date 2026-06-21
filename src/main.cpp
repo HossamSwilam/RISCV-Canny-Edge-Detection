@@ -2,7 +2,7 @@
 #include <fstream>
 #include <string>
 #include <cstdlib>
-#include <chrono> // 1. إضافة مكتبة حساب الوقت
+#include <chrono> 
 #include "image.h"
 #include "processing.h"
 
@@ -50,15 +50,29 @@ int main(int argc, char* argv[]) {
     std::cout << "Image loaded: " << input.width << "x" << input.height << std::endl;
 
     // =========================================================================
-    // 2. Gaussian Blur 
+    // 2. Gaussian Blur (الطريقة الأساسية 2D)
     // =========================================================================
-    std::cout << "Applying Gaussian Blur..." << std::endl;
+    std::cout << "Applying Gaussian Blur (2D)..." << std::endl;
     auto start_gaussian = std::chrono::high_resolution_clock::now();
     
     Image blurred = applyGaussianBlur(input);
     
     auto end_gaussian = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> duration_gaussian = end_gaussian - start_gaussian;
+
+    // =========================================================================
+    // 2.5 Separable Gaussian (للتجربة والتقرير فقط) <-- الإضافة الجديدة
+    // =========================================================================
+    std::cout << "Applying Separable Gaussian (Test)..." << std::endl;
+    auto start_sep = std::chrono::high_resolution_clock::now();
+    
+    Image separable_blur = gaussianSeparable(input);
+    
+    auto end_sep = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> duration_sep = end_sep - start_sep;
+    
+    // تحرير الذاكرة فوراً عشان مش هنستخدم الصورة دي في باقي الخطوات
+    separable_blur.free_memory(); 
 
     // =========================================================================
     // 3. Sobel Operator 
@@ -69,6 +83,7 @@ int main(int argc, char* argv[]) {
     
     auto start_sobel = std::chrono::high_resolution_clock::now();
     
+    // الفانكشن هتاخد الصورة بتاعت الطريقة الأساسية (blurred) عشان تكمل عليها
     applySobel(blurred, magnitude, direction, use_l2);
     
     auto end_sobel = std::chrono::high_resolution_clock::now();
@@ -115,7 +130,8 @@ int main(int argc, char* argv[]) {
                         duration_hysteresis.count();
 
     std::cout << "\n================ PERFORMANCE REPORT ================\n";
-    std::cout << "1. Gaussian Blur      : " << duration_gaussian.count()   << " ms\n";
+    std::cout << "1. Gaussian Blur (2D)  : " << duration_gaussian.count()   << " ms\n";
+    std::cout << "   -> Separable (Test) : " << duration_sep.count()        << " ms\n"; // الإضافة في الطباعة
     std::cout << "2. Sobel Operator      : " << duration_sobel.count()      << " ms\n";
     std::cout << "3. Non-Max Suppression : " << duration_nms.count()        << " ms\n";
     std::cout << "4. Double Threshold    : " << duration_thresh.count()     << " ms\n";
