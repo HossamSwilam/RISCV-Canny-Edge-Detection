@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include "processing.h"
 
+// 1. Test that dimensions remain unchanged
 TEST(GaussianBlurTest, DimensionsRemainUnchanged) {
     Image input;
     input.allocate(3, 3);
@@ -17,6 +18,7 @@ TEST(GaussianBlurTest, DimensionsRemainUnchanged) {
     output.free_memory();
 }
 
+// 2. Test that a black image remains black
 TEST(GaussianBlurTest, BlackImageRemainsBlack) {
     Image input;
     input.allocate(10, 10);
@@ -31,6 +33,7 @@ TEST(GaussianBlurTest, BlackImageRemainsBlack) {
     output.free_memory();
 }
 
+// 3. Test that a uniform image remains uniform
 TEST(GaussianBlurTest, UniformImageRemainsUniform) {
     Image input;
     input.allocate(10, 10);
@@ -47,6 +50,7 @@ TEST(GaussianBlurTest, UniformImageRemainsUniform) {
     output.free_memory();
 }
 
+// 4. Test symmetric spreading of an impulse
 TEST(GaussianBlurTest, ImpulseSpreadsSymmetrically) {
     Image input;
     input.allocate(11, 11);
@@ -62,4 +66,50 @@ TEST(GaussianBlurTest, ImpulseSpreadsSymmetrically) {
     
     input.free_memory();
     output.free_memory();
+}
+
+// =========================================================================
+// 5. Boundary Test: Ensure edges are not black or filled with garbage
+// =========================================================================
+TEST(GaussianBlurTest, BoundaryPixelsAreProcessed) {
+    Image input;
+    input.allocate(10, 10);
+    std::memset(input.data, 255, 100); // Fully white image
+
+    Image output = applyGaussianBlur(input);
+
+    // Edges and corners should not be zero (black)
+    EXPECT_GT(output.data[0], 0); // Top-left corner
+    EXPECT_GT(output.data[9], 0); // Top-right corner
+    EXPECT_GT(output.data[9 * 10 + 0], 0); // Bottom-left corner
+    EXPECT_GT(output.data[9 * 10 + 9], 0); // Bottom-right corner
+    
+    input.free_memory();
+    output.free_memory();
+}
+
+// =========================================================================
+// 6. Equivalence Test: Compare standard 2D and Separable implementations
+// =========================================================================
+TEST(GaussianBlurTest, SeparableEquivalence) {
+    Image input;
+    input.allocate(10, 10);
+    
+    // Fill image with a gradient pattern for a realistic test
+    for(int i = 0; i < 100; i++) {
+        input.data[i] = i % 256; 
+    }
+
+    Image output_2d = applyGaussianBlur(input);
+    Image output_sep = gaussianSeparable(input); 
+
+    // Compare each pixel (using EXPECT_NEAR due to slight rounding differences 
+    // caused by different kernel sums: 273 vs 289)
+    for (int i = 0; i < 100; i++) {
+        EXPECT_NEAR(output_2d.data[i], output_sep.data[i], 3); 
+    }
+
+    input.free_memory();
+    output_2d.free_memory();
+    output_sep.free_memory();
 }

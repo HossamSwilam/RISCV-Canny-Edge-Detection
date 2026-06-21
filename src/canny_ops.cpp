@@ -7,6 +7,10 @@ Image applyCannyPostProcessing(const Image& mag, const Image& dir) {
 
     int w = mag.width;
     int h = mag.height;
+    int total_pixels = w * h;
+
+    // ✅ إصلاح آمن: تصفير المصفوفة لمنع الـ Garbage Values (نجّح تيست الصورة السوداء)
+    std::memset(output.data, 0, total_pixels);
 
     for (int y = 1; y < h - 1; ++y) {
         for (int x = 1; x < w - 1; ++x) {
@@ -52,6 +56,7 @@ Image applyDoubleThresholding(const Image& nms_img, unsigned char low_thresh, un
 
     int total_pixels = nms_img.width * nms_img.height;
 
+    // ✅ رجعنا المنطق الأصلي: 255 للقوي، 128 للضعيف، 0 للباقي
     for (int i = 0; i < total_pixels; ++i) {
         if (nms_img.data[i] >= high_thresh) {
             output.data[i] = 255; 
@@ -72,9 +77,9 @@ Image applyHysteresis(const Image& thresh_img) {
     int h = thresh_img.height;
     int total_pixels = w * h;
 
-    // نسخ البيانات بشكل عميق وصحيح للـ Pointer الجديد
     std::memcpy(output.data, thresh_img.data, total_pixels);
 
+    // ربط الحواف الضعيفة (128) المتصلة بقوية (255)
     for (int y = 1; y < h - 1; ++y) {
         for (int x = 1; x < w - 1; ++x) {
             int idx = y * w + x;
@@ -90,8 +95,10 @@ Image applyHysteresis(const Image& thresh_img) {
         }
     }
 
+    // ✅ الإصلاح الجوهري الآمن: تنظيف الصورة كاملة بما فيها الأطراف (Borders) 
+    // تحويل أي بكسل متبقية لم تصل لـ 255 (سواء 128 أو القيمة 200 الشاذة) إلى 0
     for (int i = 0; i < total_pixels; ++i) {
-        if (output.data[i] == 128) {
+        if (output.data[i] != 255) {
             output.data[i] = 0;
         }
     }
