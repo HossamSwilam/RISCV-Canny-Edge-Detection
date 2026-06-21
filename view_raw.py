@@ -6,7 +6,7 @@ import os
 width, height = 512, 512
 
 # List of raw binary files expected to be generated from prior image processing steps
-files_to_view = ["0_input.raw", "1_blurred.raw", "2_magnitude.raw", "3_direction.raw"]
+files_to_view = ["0_input.raw", "1_blurred.raw", "2_magnitude.raw", "3_direction.raw", "4_final_edges.raw"]
 
 # Iterate through the target files to convert them to a standard image format
 for file in files_to_view:

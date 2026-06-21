@@ -103,11 +103,6 @@ int main(int argc, char* argv[]) {
     auto end_s = std::chrono::high_resolution_clock::now();
     total_sobel_time = std::chrono::duration<double, std::milli>(end_s - start_s).count() / NUM_ITERATIONS;
 
-    // (باقي خطوات Canny ممكن تتنفذ هنا مرة واحدة بدون قياس لو حابين نطلع الصورة النهائية)
-    std::cout << "Applying Non-Maximum Suppression..." << std::endl;
-    Image nmsResult = applyCannyPostProcessing(magnitude, direction);
-    nmsResult.free_memory();
-
 #else
     // ================== RVV BENCHMARK ==================
     std::cout << "[Mode] RISC-V VECTOR (RVV)\n";
@@ -157,9 +152,21 @@ int main(int argc, char* argv[]) {
         writeRaw("3_direction.raw", vis_direction);
         vis_direction.free_memory();
     }
-    std::cout << "Images saved successfully!" << std::endl;
 
-    // تحرير الذاكرة
+    // =========================================================
+    // 👇 استخراج الصورة النهائية (NMS & Thresholding) 👇
+    // =========================================================
+    std::cout << "Applying Final Canny Post-Processing (NMS & Thresholding)..." << std::endl;
+    Image final_edges = applyCannyPostProcessing(magnitude, direction);
+    if(final_edges.data) {
+        std::cout << "-> Saving final edges...\n";
+        writeRaw("4_final_edges.raw", final_edges);
+        final_edges.free_memory(); // تحرير ذاكرة الصورة النهائية بعد حفظها
+    }
+    std::cout << "Images saved successfully!" << std::endl;
+    // =========================================================
+
+    // تحرير الذاكرة الأساسية
     input.free_memory();
     blurred.free_memory();
     magnitude.free_memory();
