@@ -1,6 +1,5 @@
 # Canny Edge Detection on RISC-V (RVV 1.0)
 
-**Group 17 — Embedded Systems Project**
 Supervised by Dr. Omar Ahmed Nasr
 
 A Canny edge detection pipeline implemented first as a portable scalar C++ baseline, then
