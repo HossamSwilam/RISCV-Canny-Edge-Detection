@@ -2,37 +2,37 @@
 #include <fstream>
 #include <string>
 #include <cstdlib>
-#include <chrono> // 1. إضافة مكتبة حساب الوقت
+#include <chrono>
 #include "image.h"
 #include "processing.h"
 
-// قراءة ملف Raw (بدون header) باستخدام الـ Aligned Allocation الجديد
+// تعريف دوال الـ RVV عشان نقدر نستخدمها لو الـ Flag متفعل
+#ifdef __riscv_vector
+extern void gaussian_blur_rvv(const Image& src, Image& dst);
+extern void applySobelRVV(const Image& blurred, Image& magnitude, Image& direction);
+#endif
+
 Image readRaw(const std::string& filename, int width, int height) {
     Image img;
-    img.allocate(width, height); // تخصيص الذاكرة المحاذية لـ 64 بايت لرفع أداء الـ SIMD
-    
+    img.allocate(width, height);
     std::ifstream file(filename, std::ios::binary);
     if (!file) {
         std::cerr << "Error: Could not open file " << filename << std::endl;
         img.free_memory();
-        return img; // هيرجع كائن فارغ والـ data جواه بـ nullptr
+        return img;
     }
-
     file.read(reinterpret_cast<char*>(img.data), width * height);
     return img;
 }
 
-// حفظ ملف Raw
 bool writeRaw(const std::string& filename, const Image& img) {
     std::ofstream file(filename, std::ios::binary);
     if (!file) return false;
-
     file.write(reinterpret_cast<const char*>(img.data), img.width * img.height);
     return true;
 }
 
 int main(int argc, char* argv[]) {
-    // الدليل يشترط أن يقوم الـ Caller بتحديد الـ Width والـ Height عبر الـ Command Line
     if (argc != 4) {
         std::cerr << "Usage: " << argv[0] << " <input.raw> <width> <height>" << std::endl;
         return -1;
@@ -42,103 +42,103 @@ int main(int argc, char* argv[]) {
     int width = std::stoi(argv[2]);
     int height = std::stoi(argv[3]);
 
-    std::cout << "--- Canny Edge Detection (Scalar Version with Profiling) ---" << std::endl;
+    std::cout << "--- Canny Edge Detection Profiling ---" << std::endl;
 
-    // 1. Read Raw Image
     Image input = readRaw(inputPath, width, height);
     if (!input.data) return -1;
-    std::cout << "Image loaded: " << input.width << "x" << input.height << std::endl;
+    
+    // هنسيب الصور بدون allocate، الدوال هي اللي هتعملهم التخصيص المناسب لحجمهم
+    Image blurred, magnitude, direction;
 
-    // =========================================================================
-    // 2. Gaussian Blur 
-    // =========================================================================
-    std::cout << "Applying Gaussian Blur..." << std::endl;
-    auto start_gaussian = std::chrono::high_resolution_clock::now();
-    
-    Image blurred = applyGaussianBlur(input);
-    
-    auto end_gaussian = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> duration_gaussian = end_gaussian - start_gaussian;
+    int NUM_ITERATIONS = 10;
+    double total_gaussian_time = 0;
+    double total_sobel_time = 0;
 
-    // =========================================================================
-    // 3. Sobel Operator 
-    // =========================================================================
-    std::cout << "Applying Sobel Operator..." << std::endl;
-    Image magnitude, direction;
-    bool use_l2 = true; 
-    
-    auto start_sobel = std::chrono::high_resolution_clock::now();
-    
-    applySobel(blurred, magnitude, direction, use_l2);
-    
-    auto end_sobel = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> duration_sobel = end_sobel - start_sobel;
+    std::cout << "Running Benchmarks (" << NUM_ITERATIONS << " iterations)..." << std::endl;
 
-    // =========================================================================
-    // 4. Non-Maximum Suppression 
-    // =========================================================================
-    std::cout << "Applying Non-Maximum Suppression..." << std::endl;
-    auto start_nms = std::chrono::high_resolution_clock::now();
+#ifndef __riscv_vector
+    // ================== SCALAR BENCHMARK ==================
+    std::cout << "[Mode] SCALAR\n";
     
-    Image nmsResult = applyCannyPostProcessing(magnitude, direction);
-    
-    auto end_nms = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> duration_nms = end_nms - start_nms;
+    auto start_g = std::chrono::high_resolution_clock::now();
+    for(int i = 0; i < NUM_ITERATIONS; i++) {
+        if (i == NUM_ITERATIONS - 1) {
+            blurred = applyGaussianBlur(input); // نحتفظ بآخر نسخة فقط
+        } else {
+            Image temp = applyGaussianBlur(input);
+            temp.free_memory();
+        }
+    }
+    auto end_g = std::chrono::high_resolution_clock::now();
+    total_gaussian_time = std::chrono::duration<double, std::milli>(end_g - start_g).count() / NUM_ITERATIONS;
 
-    // =========================================================================
-    // 5. Double Thresholding
-    // =========================================================================
-    std::cout << "Applying Double Thresholding..." << std::endl;
-    auto start_thresh = std::chrono::high_resolution_clock::now();
-    
-    Image threshResult = applyDoubleThresholding(nmsResult, 20, 60);
-    
-    auto end_thresh = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> duration_thresh = end_thresh - start_thresh;
+    auto start_s = std::chrono::high_resolution_clock::now();
+    for(int i = 0; i < NUM_ITERATIONS; i++) {
+        if (i == NUM_ITERATIONS - 1) {
+            applySobel(blurred, magnitude, direction, true); // نحتفظ بآخر نسخة
+        } else {
+            Image temp_mag, temp_dir;
+            applySobel(blurred, temp_mag, temp_dir, true);
+            temp_mag.free_memory();
+            temp_dir.free_memory();
+        }
+    }
+    auto end_s = std::chrono::high_resolution_clock::now();
+    total_sobel_time = std::chrono::duration<double, std::milli>(end_s - start_s).count() / NUM_ITERATIONS;
 
-    // =========================================================================
-    // 6. Hysteresis Edge Tracking
-    // =========================================================================
-    std::cout << "Applying Hysteresis Edge Tracking..." << std::endl;
-    auto start_hysteresis = std::chrono::high_resolution_clock::now();
-    
-    Image finalResult = applyHysteresis(threshResult);
-    
-    auto end_hysteresis = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> duration_hysteresis = end_hysteresis - start_hysteresis;
+#else
+    // ================== RVV BENCHMARK ==================
+    std::cout << "[Mode] RISC-V VECTOR (RVV)\n";
+    // يتم تخصيص الذاكرة هنا قبل الـ RVV Loops لو دوال الـ RVV لا تقوم بذلك أوتوماتيكياً
+    blurred.allocate(width, height);
+    magnitude.allocate(width, height);
+    direction.allocate(width, height);
 
-    // =========================================================================
-    // 📊 طبع تقرير الأداء (Performance Report)
-    // =========================================================================
-    double total_time = duration_gaussian.count() + duration_sobel.count() + 
-                        duration_nms.count() + duration_thresh.count() + 
-                        duration_hysteresis.count();
+    auto start_g = std::chrono::high_resolution_clock::now();
+    for(int i = 0; i < NUM_ITERATIONS; i++) {
+        gaussian_blur_rvv(input, blurred);
+    }
+    auto end_g = std::chrono::high_resolution_clock::now();
+    total_gaussian_time = std::chrono::duration<double, std::milli>(end_g - start_g).count() / NUM_ITERATIONS;
 
+    auto start_s = std::chrono::high_resolution_clock::now();
+    for(int i = 0; i < NUM_ITERATIONS; i++) {
+        applySobelRVV(blurred, magnitude, direction);
+    }
+    auto end_s = std::chrono::high_resolution_clock::now();
+    total_sobel_time = std::chrono::duration<double, std::milli>(end_s - start_s).count() / NUM_ITERATIONS;
+#endif
+
+    // ================== PERFORMANCE REPORT ==================
     std::cout << "\n================ PERFORMANCE REPORT ================\n";
-    std::cout << "1. Gaussian Blur      : " << duration_gaussian.count()   << " ms\n";
-    std::cout << "2. Sobel Operator      : " << duration_sobel.count()      << " ms\n";
-    std::cout << "3. Non-Max Suppression : " << duration_nms.count()        << " ms\n";
-    std::cout << "4. Double Threshold    : " << duration_thresh.count()     << " ms\n";
-    std::cout << "5. Hysteresis Tracking : " << duration_hysteresis.count() << " ms\n";
-    std::cout << "----------------------------------------------------\n";
-    std::cout << "Total Pipeline Time    : " << total_time                  << " ms\n";
+    std::cout << "1. Gaussian Blur (Avg) : " << total_gaussian_time << " ms\n";
+    std::cout << "2. Sobel Op (Avg)      : " << total_sobel_time << " ms\n";
     std::cout << "====================================================\n\n";
 
-    // 7. Save the final result as RAW
-    if (writeRaw("output.raw", finalResult)) {
-        std::cout << "Success! Output saved as output.raw" << std::endl;
-    } else {
-        std::cerr << "Error saving output file." << std::endl;
+    // --- حفظ الصور بعد كل مرحلة بأمان ---
+    std::cout << "Saving intermediate images..." << std::endl;
+    if(input.data) { std::cout << "-> Saving input...\n"; writeRaw("0_input.raw", input); }
+    if(blurred.data) { std::cout << "-> Saving blurred...\n"; writeRaw("1_blurred.raw", blurred); }
+    if(magnitude.data) { std::cout << "-> Saving magnitude...\n"; writeRaw("2_magnitude.raw", magnitude); }
+    
+    if(direction.data) {
+        std::cout << "-> Saving direction...\n";
+        Image vis_direction;
+        // استخدام الأبعاد الفعلية للصورة الناتجة لتجنب قراءة خارج الذاكرة
+        vis_direction.allocate(direction.width, direction.height);
+        for(int i = 0; i < direction.width * direction.height; i++) {
+            vis_direction.data[i] = direction.data[i] * 50; 
+        }
+        writeRaw("3_direction.raw", vis_direction);
+        vis_direction.free_memory();
     }
+    std::cout << "Images saved successfully!" << std::endl;
 
     // تحرير الذاكرة
     input.free_memory();
     blurred.free_memory();
     magnitude.free_memory();
     direction.free_memory();
-    nmsResult.free_memory();
-    threshResult.free_memory();
-    finalResult.free_memory();
 
     return 0;
 }
